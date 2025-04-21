@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <title>Registro</title>
+        <!-- Required meta tags -->
+        <meta charset="utf-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, shrink-to-fit=no"
+        />
+
+        <!-- Bootstrap CSS v5.2.1 -->
+        <link
+            href="/css/bootstrap.min.css"
+            rel="stylesheet"
+            crossorigin="anonymous"
+        />
+    </head>
+
+    <body>
+        <header>
+            <!-- place navbar here -->
+        </header>
+        <main>
+
+            <div class="container mt-5"  >
+                <div class="row justify-content-center"  >
+                    <div class="col-md-8 col-lg-8" >
+
+
+<div
+    class="alert alert-success alert-dismissible fade show"
+    role="alert"
+>
+              
+
+                       {% if mensaje %}
+                          
+
+                          <div
+                          class="alert alert-success"
+                          role="alert"
+                      >
+                          <strong>{{mensaje}}</strong> 
+                      </div>
+                      
+                        {% endif %}
+
+
+
+
+
+
+
+
+
+                       <div class="card">
+                        <div class="card-header">Formulario de registro</div>
+                        <div class="card-body">
+
+                            <form action="/sitio/registrousuario/guardar"  method="post">
+                         
+
+ <div class="row mb-3">
+    <div class="col">
+        <div class="mb-3">
+            <label for="txtNombres" class="form-label">Nombres</label>
+            <input
+                type="text"
+                class="form-control"
+                name="txtNombres"
+                id="txtNombres"
+                aria-describedby="helpId"
+                placeholder="Escribe los nombres"
+                required
+            />
+            
+        </div>
+        
+
+    </div>
+    <div class="col">
+
+        <div class="mb-3">
+            <label for="txtApellidos" class="form-label">Apellidos</label>
+            <input
+                type="text"
+                class="form-control"
+                name="txtApellidos"
+                id="txtApellidos"
+                aria-describedby="helpId"
+                placeholder="Escribe los apellidos"
+                required
+            />
+           
+        </div>
+        
+    </div>
+ </div>
+                                   
+                                
+                                <div class="mb-3">
+                                    <label for="txtUsuario" class="form-label">Usuario</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        name="txtUsuario"
+                                        id="txtUsuario"
+                                        aria-describedby="helpId"
+                                        placeholder="Escribe el usuario"
+                                        required
+                                    />
+                                  
+                                </div>
+
+ 
+
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <div class="mb-3">
+                                            <label for="txtPassword" class="form-label">Contraseña</label>
+                                            <input
+                                                type="password"
+                                                class="form-control"
+                                                name="txtPassword"
+                                                id="txtPassword"
+                                                placeholder="Escribe la contraseña"
+                                                required
+                                            />
+                                           </div>
+
+
+
+                                </div>
+                                <div class="col">
+
+                                    <div class="mb-3">
+                                        <label for="txtconfirmarPassword" class="form-label">Repetir contraseña</label>
+                                        <input
+                                            type="password"
+                                            class="form-control"
+                                            name="txtconfirmarPassword"
+                                            id="txtconfirmarPassword"
+                                            placeholder="Repite la contraseña"
+                                            required
+                                        />
+                                                   <div class="invalid-feedback">Las contraseñas no coinciden</div>
+
+                                       </div>
+                                       
+                                </div>            
+                            </div>
+
+                            <label for="txtCargo" class="form-label">
+                                Cargo:
+                                 </label>
+                                <select class="form-select" name="txtCargo" id="txtCargo">
+                                    <option value="Docente">Docente</option>
+                               
+                        
+                                </select>
+                                
+                                
+                                <br>
+                        
+                                <button type="submit" class="btn btn-success" >Registrarme</button>
+                                <a href="/"  type="submit" class="btn btn-secondary" >Iniciar Sesion</a>
+                            </form>
+
+                        </div>
+                        
+                       </div>
+
+                        
+ 
+
+                    </div>
+                </div>
+            </div>
+
+
+            
+
+
+
+
+
+
+        </main>
+        <footer>
+            <!-- place footer here -->
+        </footer>
+        <!-- Bootstrap JavaScript Libraries -->
+        <script
+            src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"
+            integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r"
+            crossorigin="anonymous"
+        ></script>
+
+        <script
+            src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js"
+            integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
+            crossorigin="anonymous"
+        ></script>
+     
+        <script>
+         
+         document.addEventListener('DOMContentLoaded' , function() {
+            
+            document.getElementById("formularioderegistro").addEventListener('submit', function(event){
+                var password= document.getElementById("password").value;
+                var confirmarPassword= document.getElementById("confirmarPassword").value;
+
+
+        if(password !== confirmarPassword){
+           document.getElementById('confirmarPassword').classList.add('is-invalid');
+          event.preventDefault();
+
+        }else{
+              document.getElementById('confirmarPassword').classList.remove('is-invalid');
+
+        }
+
+            });
+
+           
+
+         });
+
+         
+
+
+        </script>
+
+    
+
+
+    </body>
+</html>
+
+

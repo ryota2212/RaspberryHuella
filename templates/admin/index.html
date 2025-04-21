@@ -1,0 +1,352 @@
+{% include 'sitio/cabecera.html' %}
+
+<header>
+    <!-- Aquí puedes colocar la barra de navegación si lo deseas -->
+</header>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-8">
+        <div class="col">
+            <h2> Bienvenid@ {{ session["usuario"] }} </h2>
+
+            <div class="container mt-5">
+                <!-- 📢 Mensajes de éxito o error -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="mt-3">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                {% endwith %}
+
+                {% if mensaje %}
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        {{ mensaje }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endif %}
+
+                <h3 id="fecha"></h3>
+                <div class="card">
+                    <div class="card-header">Formulario de registro de huellas</div>
+                    <div class="card-body">
+                        <form id="registroForm" action="/sitio/registrohuellas/guardar" method="post" enctype="multipart/form-data">
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <label for="txtNombres" class="form-label">Nombres</label>
+                                    <input type="text" class="form-control" name="txtNombres" id="txtNombres" placeholder="Ingrese los nombres" required disabled />
+                                </div>
+                                <div class="col">
+                                    <label for="txtApellidos" class="form-label">Apellidos</label>
+                                    <input type="text" class="form-control" name="txtApellidos" id="txtApellidos" placeholder="Escribe los apellidos" disabled />
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <label for="txtCedula" class="form-label">Cédula</label>
+                                    <input type="text" class="form-control" name="txtCedula" id="txtCedula" placeholder="Ingresa tu cédula" required disabled />
+                                    <div id="mensajeCedula" class="text-danger"></div> <!-- Aquí se mostrará el error -->
+                                </div>
+                                <div class="col">
+                                    <label for="txtTelefono" class="form-label">Teléfono</label>
+                                    <input type="text" class="form-control" name="txtTelefono" id="txtTelefono" placeholder="Ingrese su teléfono" required disabled />
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <label for="txtCargo" class="form-label">Cargo:</label>
+                                    <select class="form-select" name="txtCargo" id="txtCargo" required disabled>
+                                        <option value="Docente">Docente</option>
+                                        <option value="Estudiante">Estudiante</option>
+                                        <option value="Administrativo">Administrativo</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <label for="btnCapturarHuella" class="form-label">Huella</label>
+                                </div>
+                            </div>
+
+                            <!-- Campo oculto para el template de huella -->
+                            <input type="hidden" id="templateBase64" name="templateBase64">
+
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <div id="mensajeCaptura" class="mb-3 alert alert-info">
+                                        Haga clic en "Capturar Huella" para iniciar el proceso de registro.
+                                        <br>Se le pedirá colocar su dedo dos veces para verificación.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <button id="btnCapturarHuella" type="button" class="btn btn-primary">Capturar Huella</button>
+                                </div>
+                                <div class="col">
+                                    <button id="btnVerificarHuella" type="button" class="btn btn-secondary" disabled>Verificar Huella</button>
+                                </div>
+                                <div class="col">
+                                    <button id="btnGuardar" type="submit" class="btn btn-success" disabled>Guardar Registro</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Agregar script para manejar la captura y verificación de huellas -->
+<script>
+    // Mostrar la fecha actual
+    document.addEventListener('DOMContentLoaded', function() {
+        const fechaActual = new Date();
+        const opciones = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('fecha').textContent = fechaActual.toLocaleDateString('es-ES', opciones);
+        
+        // Referencias a elementos del DOM
+        const btnCapturarHuella = document.getElementById('btnCapturarHuella');
+        const btnVerificarHuella = document.getElementById('btnVerificarHuella');
+        const btnGuardar = document.getElementById('btnGuardar');
+        const mensajeCaptura = document.getElementById('mensajeCaptura');
+        const templateBase64 = document.getElementById('templateBase64');
+        
+        // Campos de formulario
+        const txtNombres = document.getElementById('txtNombres');
+        const txtApellidos = document.getElementById('txtApellidos');
+        const txtCedula = document.getElementById('txtCedula');
+        const txtTelefono = document.getElementById('txtTelefono');
+        const txtCargo = document.getElementById('txtCargo');
+        
+        // Estado de captura
+        let huellaCapturada = false;
+        let capturando = false;
+        let verificando = false;
+        
+        // Evento para capturar huella
+        btnCapturarHuella.addEventListener('click', function() {
+            if (capturando) return; // Evitar múltiples solicitudes
+            
+            capturando = true;
+            huellaCapturada = false;
+            btnVerificarHuella.disabled = true;
+            
+            mensajeCaptura.className = 'mb-3 alert alert-info';
+            mensajeCaptura.innerHTML = 'Esperando dedo... <br>Por favor, coloque su dedo en el sensor.';
+            
+            // Iniciar el proceso de captura
+            iniciarCaptura();
+        });
+        
+        function iniciarCaptura() {
+            // Llamada a la API para iniciar la captura
+            fetch('/api/iniciar-captura', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Siempre iniciar el polling, independientemente de la respuesta
+                verificarCaptura();
+            })
+            .catch(error => {
+                console.error("Error al iniciar captura:", error);
+                // Reintentar después de un breve retraso
+                setTimeout(iniciarCaptura, 1000);
+            });
+        }
+        
+        function verificarCaptura() {
+            if (!capturando) return;
+            
+            fetch('/api/verificar-estado-captura', {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Siempre mantener el mensaje de espera hasta que se detecte el dedo
+                if (data.status === 'captured') {
+                    // Huella capturada, procesar
+                    mensajeCaptura.className = 'mb-3 alert alert-info';
+                    mensajeCaptura.innerHTML = 'Dedo detectado, procesando...';
+                    procesarHuellaCapturada();
+                } else {
+                    // Para cualquier otro estado, seguir esperando
+                    setTimeout(verificarCaptura, 500);
+                }
+            })
+            .catch(error => {
+                console.error("Error al verificar estado:", error);
+                // En caso de error, seguir intentando
+                setTimeout(verificarCaptura, 1000);
+            });
+        }
+        
+        function procesarHuellaCapturada() {
+            fetch('/api/procesar-huella-capturada', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    mensajeCaptura.className = 'mb-3 alert alert-success';
+                    mensajeCaptura.innerHTML = 'Huella capturada correctamente. <br>Ahora puede verificar la huella presionando el botón "Verificar Huella".';
+                    btnVerificarHuella.disabled = false;
+                    huellaCapturada = true;
+                } else {
+                    mensajeCaptura.className = 'mb-3 alert alert-warning';
+                    mensajeCaptura.innerHTML = 'Error al procesar la huella: ' + data.message + 
+                                              '<br>Intente nuevamente presionando "Capturar Huella".';
+                }
+                capturando = false;
+            })
+            .catch(error => {
+                console.error("Error al procesar huella:", error);
+                mensajeCaptura.className = 'mb-3 alert alert-warning';
+                mensajeCaptura.innerHTML = 'Error de conexión. Intente nuevamente en unos momentos.';
+                capturando = false;
+            });
+        }
+        
+        // Evento para verificar huella
+        btnVerificarHuella.addEventListener('click', function() {
+            if (!huellaCapturada || verificando) {
+                mensajeCaptura.className = 'mb-3 alert alert-warning';
+                mensajeCaptura.innerHTML = 'Primero debe capturar una huella correctamente.';
+                return;
+            }
+            
+            verificando = true;
+            mensajeCaptura.className = 'mb-3 alert alert-info';
+            mensajeCaptura.innerHTML = 'Esperando dedo para verificación... <br>Por favor, coloque el mismo dedo nuevamente en el sensor.';
+            
+            // Iniciar el proceso de verificación
+            iniciarVerificacion();
+        });
+        
+        function iniciarVerificacion() {
+            fetch('/api/iniciar-verificacion', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Siempre iniciar la verificación, independientemente de la respuesta
+                verificarEstadoVerificacion();
+            })
+            .catch(error => {
+                console.error("Error al iniciar verificación:", error);
+                // Reintentar después de un breve retraso
+                setTimeout(iniciarVerificacion, 1000);
+            });
+        }
+        
+        function verificarEstadoVerificacion() {
+            if (!verificando) return;
+            
+            fetch('/api/verificar-estado-verificacion', {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Siempre mantener el mensaje de espera hasta que se detecte el dedo
+                if (data.status === 'captured') {
+                    // Huella capturada para verificación, procesar
+                    mensajeCaptura.className = 'mb-3 alert alert-info';
+                    mensajeCaptura.innerHTML = 'Dedo detectado, procesando verificación...';
+                    procesarVerificacion();
+                } else {
+                    // Para cualquier otro estado, seguir esperando
+                    setTimeout(verificarEstadoVerificacion, 500);
+                }
+            })
+            .catch(error => {
+                console.error("Error al verificar estado de verificación:", error);
+                // En caso de error, seguir intentando
+                setTimeout(verificarEstadoVerificacion, 1000);
+            });
+        }
+        
+        function procesarVerificacion() {
+            fetch('/api/procesar-verificacion', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    mensajeCaptura.className = 'mb-3 alert alert-success';
+                    mensajeCaptura.innerHTML = 'Verificación exitosa. Las huellas coinciden.<br>Ahora puede completar el formulario.';
+                    
+                    // Guardar el template en el input oculto
+                    templateBase64.value = data.template;
+                    
+                    // Habilitar campos del formulario
+                    txtNombres.disabled = false;
+                    txtApellidos.disabled = false;
+                    txtCedula.disabled = false;
+                    txtTelefono.disabled = false;
+                    txtCargo.disabled = false;
+                    btnGuardar.disabled = false;
+                } else {
+                    mensajeCaptura.className = 'mb-3 alert alert-warning';
+                    mensajeCaptura.innerHTML = 'Error en la verificación: ' + data.message + 
+                                              '<br>Las huellas no coinciden. Intente nuevamente el proceso completo.';
+                }
+                verificando = false;
+            })
+            .catch(error => {
+                console.error("Error al procesar verificación:", error);
+                mensajeCaptura.className = 'mb-3 alert alert-warning';
+                mensajeCaptura.innerHTML = 'Error de conexión. Intente nuevamente en unos momentos.';
+                verificando = false;
+            });
+        }
+        
+        // Validación de cédula
+        txtCedula.addEventListener('blur', function() {
+            const cedula = txtCedula.value.trim();
+            if (cedula) {
+                fetch('/api/verificar-cedula?cedula=' + encodeURIComponent(cedula))
+                .then(response => response.json())
+                .then(data => {
+                    if (data.existe) {
+                        document.getElementById('mensajeCedula').textContent = 'Esta cédula ya está registrada en el sistema.';
+                        btnGuardar.disabled = true;
+                    } else {
+                        document.getElementById('mensajeCedula').textContent = '';
+                        btnGuardar.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error("Error al verificar cédula:", error);
+                    document.getElementById('mensajeCedula').textContent = 'Error al verificar la cédula.';
+                });
+            }
+        });
+    });
+</script>
+
+{% include 'sitio/pie.html' %}

@@ -1,0 +1,68 @@
+{% include 'sitio/cabecera.html' %}
+
+<header>
+    <!-- Coloca aquí tu barra de navegación (navbar) -->
+</header>
+<main>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8 col-lg-8">
+                {% if mensaje %}
+                <div class="alert alert-success" role="alert">
+                    <strong>{{ mensaje }}</strong>
+                </div>
+                {% endif %}
+
+                <div class="card">
+                    <div class="card-header">Formulario Para Editar</div>
+                    <div class="card-body">
+                        {% for usuario in usuarios %}
+                        <form method="post" action="/store" enctype="multipart/form-data">
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <div class="mb-3">
+                                        <input type="hidden" value="{{ usuario[0] }}" name="txtID" id="txtID">
+                                        <label for="txtNombres" class="form-label">Nombres</label>
+                                        <input type="text" value="{{ usuario[1] }}" class="form-control" name="txtNombres" id="txtNombres" aria-describedby="helpId" placeholder="Escribe los nombres" required>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="mb-3">
+                                        <label for="txtApellidos" class="form-label">Cedula</label>
+                                        <input type="text" value="{{ usuario[2] }}" class="form-control" name="txtCedula" id="txtCedula" aria-describedby="helpId" placeholder="Escribe la cedula" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="txtUsuario" class="form-label">Telefono</label>
+                                <input type="text" value="{{ usuario[3] }}" class="form-control" name="txtTelefono" id="txtTelefono" aria-describedby="helpId" placeholder="Escribe el Telefono" required>
+                            </div>
+
+                            
+
+                            <label for="txtCargo" class="form-label">Cargo:</label>
+                            <select class="form-select" name="txtCargo" id="txtCargo">
+                                <option value="Docente">Docente</option>
+                            </select>
+
+                            <br>
+                            <input type="submit" value="Realizar Cambios" class="btn btn-success">
+                        </form>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<footer>
+    <!-- Coloca aquí tu pie de página -->
+</footer>
+
+<!-- Bibliotecas JavaScript de Bootstrap -->
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js" integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+" crossorigin="anonymous"></script>
+
+{% include 'sitio/pie.html' %}

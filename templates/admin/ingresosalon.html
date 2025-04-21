@@ -1,0 +1,154 @@
+{% include 'sitio/cabecera.html' %}
+
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4><i class="fas fa-door-open mr-2"></i> Control de Acceso al Salón</h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle mr-2"></i> Este sistema permite controlar el acceso al salón mediante verificación de huellas digitales.
+                    </div>
+                    
+                    <div class="text-center mb-4">
+                        <button id="btnIngresarSalon" class="btn btn-success btn-lg px-5 py-3">
+                            <i class="fas fa-fingerprint mr-2"></i> Ingresar al Salón
+                        </button>
+                    </div>
+                    
+                    <div id="mensajeIdentificacion" class="mb-3 alert alert-info" style="display: none;">
+                        Coloque su dedo en el sensor...
+                    </div>
+                    
+                    <div id="resultadoIdentificacion" style="display: none;">
+                        <div class="row">
+                            <div class="col">
+                                <div class="card border-success">
+                                    <div class="card-header bg-success text-white">
+                                        <i class="fas fa-check-circle mr-2"></i> Acceso Concedido
+                                    </div>
+                                    <div class="card-body">
+                                        <h5 id="nombrePersona" class="card-title"></h5>
+                                        <p class="card-text">
+                                            <strong>Cédula:</strong> <span id="cedulaPersona"></span><br>
+                                            <strong>Cargo:</strong> <span id="cargoPersona"></span><br>
+                                            <strong>Hora de Ingreso:</strong> <span id="horaIngreso"></span>
+                                        </p>
+                                        <div class="text-center mt-3">
+                                            <div class="alert alert-success">
+                                                <i class="fas fa-unlock mr-2"></i> La puerta se ha desbloqueado. Puede ingresar al salón.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const btnIngresarSalon = document.getElementById('btnIngresarSalon');
+        const mensajeIdentificacion = document.getElementById('mensajeIdentificacion');
+        const resultadoIdentificacion = document.getElementById('resultadoIdentificacion');
+        
+        let verificacionEnProceso = false;
+        let intervalId = null;
+        
+        btnIngresarSalon.addEventListener('click', iniciarVerificacion);
+        
+        function iniciarVerificacion() {
+            if (verificacionEnProceso) return;
+            
+            verificacionEnProceso = true;
+            btnIngresarSalon.disabled = true;
+            resultadoIdentificacion.style.display = 'none';
+            mensajeIdentificacion.style.display = 'block';
+            
+            mostrarMensaje('info', 'Coloque su dedo en el sensor...');
+            
+            // Iniciar el proceso de verificación
+            fetch('/api/ingresar_salon', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Iniciar polling para verificar el resultado
+                    intervalId = setInterval(verificarResultado, 1000);
+                } else {
+                    mostrarError('Error al iniciar la verificación: ' + data.message);
+                    verificacionEnProceso = false;
+                    btnIngresarSalon.disabled = false;
+                }
+            })
+            .catch(error => {
+                mostrarError('Error de conexión: ' + error);
+                verificacionEnProceso = false;
+                btnIngresarSalon.disabled = false;
+            });
+        }
+        
+        function verificarResultado() {
+            fetch('/api/resultado_ingreso_salon')
+            .then(response => response.json())
+            .then(data => {
+                // Mostrar mensaje de estado actual
+                mostrarMensaje(data.encontrado ? 'success' : (data.esperando_boton ? 'warning' : 'info'), data.mensaje);
+                
+                if (data.encontrado) {
+                    // Huella identificada exitosamente y puerta abierta
+                    clearInterval(intervalId);
+                    mostrarResultado(data);
+                    verificacionEnProceso = false;
+                    btnIngresarSalon.disabled = false;
+                } else if (data.esperando_boton) {
+                    // Proceso terminado sin coincidencia o con error
+                    clearInterval(intervalId);
+                    console.log("Resultado de verificación:", data);
+                    verificacionEnProceso = false;
+                    btnIngresarSalon.disabled = false;
+                }
+            })
+            .catch(error => {
+                mostrarError('Error al verificar resultado: ' + error);
+                clearInterval(intervalId);
+                verificacionEnProceso = false;
+                btnIngresarSalon.disabled = false;
+            });
+        }
+        
+        function mostrarResultado(data) {
+            if (!data.encontrado) {
+                mostrarMensaje('warning', data.mensaje || 'No se pudo identificar la huella');
+                return;
+            }
+            
+            document.getElementById('nombrePersona').textContent = data.persona.nombres;
+            document.getElementById('cedulaPersona').textContent = data.persona.cedula;
+            document.getElementById('cargoPersona').textContent = data.persona.cargo || 'No disponible';
+            document.getElementById('horaIngreso').textContent = new Date().toLocaleString();
+            
+            resultadoIdentificacion.style.display = 'block';
+            mostrarMensaje('success', '¡Acceso concedido!');
+        }
+        
+        function mostrarMensaje(tipo, mensaje) {
+            mensajeIdentificacion.className = `mb-3 alert alert-${tipo}`;
+            mensajeIdentificacion.textContent = mensaje;
+            mensajeIdentificacion.style.display = 'block';
+        }
+        
+        function mostrarError(mensaje) {
+            mostrarMensaje('danger', mensaje);
+        }
+    });
+</script>
+
+{% include 'sitio/pie.html' %}

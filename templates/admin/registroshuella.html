@@ -1,0 +1,45 @@
+{% include 'sitio/cabecera.html' %}
+
+<header>
+    <!-- place navbar here -->
+</header>
+<main>
+    <a href="/admin/index" class="btn btn-success">Agregar nuevo usuario</a>  
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombres</th>
+                <th>Cédula</th>
+                <th>Telefono</th>
+                <th>Cargo</th>
+            </tr>
+        </thead> 
+
+        <tbody>
+            {% for usuario in usuarios %}
+                <tr>
+                    <td>{{ usuario[0] }}</td>
+                    <td>{{ usuario[1] }}</td>
+                    <td>{{ usuario[2] }}</td>
+                    <td>{{ usuario[3] }}</td>
+                    <td>{{ usuario[4] }}</td>
+                    <td> 
+                        <div style="display: inline-block;">
+                            <form action="/admin/registroshuella/borrar" method="post">
+                                <input value="{{ usuario[0] }}" type="hidden" name="txtID" id="txtID">
+                                <a href="/admin/editar/{{ usuario[0] }}" class="btn btn-primary">Editar</a>
+                                <button type="submit" class="btn btn-danger">Eliminar</button> 
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</main>
+<footer>
+    <!-- place footer here -->
+</footer>
+
+{% include 'sitio/pie.html' %}
