@@ -739,11 +739,13 @@ def api_resultado_identificacion():
                 cursor.close()
                 
                 if persona:
-                    # Registrar entrada si es necesario
+                    # Registrar solo en la tabla de verificación de huella
                     if identificacion_activa:
                         cursor = mysql.connection.cursor()
-                        cursor.execute("INSERT INTO registro_ingresos (id_persona, fecha_hora_entrada) VALUES (%s, NOW())", 
-                                     (persona['id'],))
+                        cursor.execute(
+                            "INSERT INTO registro_verificacion_huella (id_persona, fecha_hora, similitud) VALUES (%s, NOW(), %s)",
+                            (persona['id'], confidence)
+                        )
                         mysql.connection.commit()
                         cursor.close()
                     
@@ -1357,9 +1359,6 @@ def api_obtener_registros_ingresos():
 
 
 # ... existing code ...
-
-
-
 
 
 if __name__ == '__main__':

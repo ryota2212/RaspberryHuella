@@ -94,9 +94,14 @@
             
             // Agregar cada registro a la tabla
             registros.forEach(registro => {
+<<<<<<< HEAD
                 // Usar directamente los valores formateados desde el servidor
                 const fechaEntrada = registro.fecha_hora_entrada || 'No registrada';
                 const fechaSalida = registro.fecha_hora_salida || 'Pendiente';
+=======
+                const fechaEntrada = registro.fecha_hora_entrada ? new Date(registro.fecha_hora_entrada).toLocaleString() : 'No registrada';
+                const fechaSalida = registro.fecha_hora_salida ? new Date(registro.fecha_hora_salida).toLocaleString() : 'Pendiente';
+>>>>>>> 46e54b50795ae5197ee021e55038eb943fb06f0b
                 const duracion = registro.duracion_minutos !== null ? registro.duracion_minutos : '-';
                 
                 const fila = document.createElement('tr');
