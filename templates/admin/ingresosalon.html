@@ -12,9 +12,12 @@
                         <i class="fas fa-info-circle mr-2"></i> Este sistema permite controlar el acceso al salón mediante verificación de huellas digitales.
                     </div>
                     
-                    <div class="text-center mb-4">
-                        <button id="btnIngresarSalon" class="btn btn-success btn-lg px-5 py-3">
+                    <div class="text-center mb-4 d-flex justify-content-center">
+                        <button id="btnIngresarSalon" class="btn btn-success btn-lg px-5 py-3 mx-2">
                             <i class="fas fa-fingerprint mr-2"></i> Ingresar al Salón
+                        </button>
+                        <button id="btnSalirSalon" class="btn btn-danger btn-lg px-5 py-3 mx-2">
+                            <i class="fas fa-sign-out-alt mr-2"></i> Salir del Salón
                         </button>
                     </div>
                     
@@ -46,6 +49,26 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <div id="resultadoSalida" style="display: none;">
+                        <div class="row">
+                            <div class="col">
+                                <div class="card border-danger">
+                                    <div class="card-header bg-danger text-white">
+                                        <i class="fas fa-check-circle mr-2"></i> Salida Autorizada
+                                    </div>
+                                    <div class="card-body">
+                                        <h5 id="nombrePersonaSalida" class="card-title"></h5>
+                                        <div class="text-center mt-3">
+                                            <div class="alert alert-danger">
+                                                <i class="fas fa-unlock mr-2"></i> La puerta se ha desbloqueado. Puede salir del salón.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -55,20 +78,25 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const btnIngresarSalon = document.getElementById('btnIngresarSalon');
+        const btnSalirSalon = document.getElementById('btnSalirSalon');
         const mensajeIdentificacion = document.getElementById('mensajeIdentificacion');
         const resultadoIdentificacion = document.getElementById('resultadoIdentificacion');
+        const resultadoSalida = document.getElementById('resultadoSalida');
         
         let verificacionEnProceso = false;
         let intervalId = null;
         
         btnIngresarSalon.addEventListener('click', iniciarVerificacion);
+        btnSalirSalon.addEventListener('click', iniciarVerificacionSalida);
         
         function iniciarVerificacion() {
             if (verificacionEnProceso) return;
             
             verificacionEnProceso = true;
             btnIngresarSalon.disabled = true;
+            btnSalirSalon.disabled = true;
             resultadoIdentificacion.style.display = 'none';
+            resultadoSalida.style.display = 'none';
             mensajeIdentificacion.style.display = 'block';
             
             mostrarMensaje('info', 'Coloque su dedo en el sensor...');
@@ -86,12 +114,50 @@
                     mostrarError('Error al iniciar la verificación: ' + data.message);
                     verificacionEnProceso = false;
                     btnIngresarSalon.disabled = false;
+                    btnSalirSalon.disabled = false;
                 }
             })
             .catch(error => {
                 mostrarError('Error de conexión: ' + error);
                 verificacionEnProceso = false;
                 btnIngresarSalon.disabled = false;
+                btnSalirSalon.disabled = false;
+            });
+        }
+        
+        function iniciarVerificacionSalida() {
+            if (verificacionEnProceso) return;
+            
+            verificacionEnProceso = true;
+            btnIngresarSalon.disabled = true;
+            btnSalirSalon.disabled = true;
+            resultadoIdentificacion.style.display = 'none';
+            resultadoSalida.style.display = 'none';
+            mensajeIdentificacion.style.display = 'block';
+            
+            mostrarMensaje('info', 'Coloque su dedo en el sensor para salir...');
+            
+            // Iniciar el proceso de verificación de salida
+            fetch('/api/salir_salon', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Iniciar polling para verificar el resultado
+                    intervalId = setInterval(verificarResultadoSalida, 1000);
+                } else {
+                    mostrarError('Error al iniciar la verificación de salida: ' + data.message);
+                    verificacionEnProceso = false;
+                    btnIngresarSalon.disabled = false;
+                    btnSalirSalon.disabled = false;
+                }
+            })
+            .catch(error => {
+                mostrarError('Error de conexión: ' + error);
+                verificacionEnProceso = false;
+                btnIngresarSalon.disabled = false;
+                btnSalirSalon.disabled = false;
             });
         }
         
@@ -108,12 +174,14 @@
                     mostrarResultado(data);
                     verificacionEnProceso = false;
                     btnIngresarSalon.disabled = false;
+                    btnSalirSalon.disabled = false;
                 } else if (data.esperando_boton) {
                     // Proceso terminado sin coincidencia o con error
                     clearInterval(intervalId);
                     console.log("Resultado de verificación:", data);
                     verificacionEnProceso = false;
                     btnIngresarSalon.disabled = false;
+                    btnSalirSalon.disabled = false;
                 }
             })
             .catch(error => {
@@ -121,6 +189,39 @@
                 clearInterval(intervalId);
                 verificacionEnProceso = false;
                 btnIngresarSalon.disabled = false;
+                btnSalirSalon.disabled = false;
+            });
+        }
+        
+        function verificarResultadoSalida() {
+            fetch('/api/resultado_salida_salon')
+            .then(response => response.json())
+            .then(data => {
+                // Mostrar mensaje de estado actual
+                mostrarMensaje(data.encontrado ? 'success' : (data.esperando_boton ? 'warning' : 'info'), data.mensaje);
+                
+                if (data.encontrado) {
+                    // Huella identificada exitosamente y puerta abierta para salida
+                    clearInterval(intervalId);
+                    mostrarResultadoSalida(data);
+                    verificacionEnProceso = false;
+                    btnIngresarSalon.disabled = false;
+                    btnSalirSalon.disabled = false;
+                } else if (data.esperando_boton) {
+                    // Proceso terminado sin coincidencia o con error
+                    clearInterval(intervalId);
+                    console.log("Resultado de verificación de salida:", data);
+                    verificacionEnProceso = false;
+                    btnIngresarSalon.disabled = false;
+                    btnSalirSalon.disabled = false;
+                }
+            })
+            .catch(error => {
+                mostrarError('Error al verificar resultado de salida: ' + error);
+                clearInterval(intervalId);
+                verificacionEnProceso = false;
+                btnIngresarSalon.disabled = false;
+                btnSalirSalon.disabled = false;
             });
         }
         
@@ -133,10 +234,55 @@
             document.getElementById('nombrePersona').textContent = data.persona.nombres;
             document.getElementById('cedulaPersona').textContent = data.persona.cedula;
             document.getElementById('cargoPersona').textContent = data.persona.cargo || 'No disponible';
-            document.getElementById('horaIngreso').textContent = new Date().toLocaleString();
+            
+            // Opcional: mostrar la hora local del navegador (solo para visualización)
+            const ahora = new Date();
+            const horaFormateada = ahora.toLocaleString('es-ES', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            document.getElementById('horaIngreso').textContent = horaFormateada;
+            
+            // Sincronizar la hora de ingreso con el backend
+            fetch('/api/sincronizar_hora_ingreso', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id_persona: data.persona.id,
+                    hora_formateada: horaFormateada
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
+                console.log('Hora sincronizada:', result);
+            })
+            .catch(error => {
+                console.error('Error al sincronizar hora:', error);
+            });
             
             resultadoIdentificacion.style.display = 'block';
             mostrarMensaje('success', '¡Acceso concedido!');
+        }
+        
+        function mostrarResultadoSalida(data) {
+            if (!data.encontrado) {
+                mostrarMensaje('warning', data.mensaje || 'No se pudo identificar la huella');
+                return;
+            }
+            
+            // Solo mostrar el nombre de la persona que sale
+            document.getElementById('nombrePersonaSalida').textContent = data.persona.nombres;
+            
+            // Ya NO se envía la hora al backend, solo se muestra el resultado
+            resultadoSalida.style.display = 'block';
+            mostrarMensaje('success', '¡Salida autorizada!');
         }
         
         function mostrarMensaje(tipo, mensaje) {

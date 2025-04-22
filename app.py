@@ -28,7 +28,9 @@ from datetime import datetime
 uart = serial.Serial("/dev/ttyUSB0", baudrate=57600, timeout=1)
 finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
 
-
+# Inicializa el segundo sensor para salidas
+uart2 = serial.Serial("/dev/ttyUSB1", baudrate=57600, timeout=1)
+finger2 = adafruit_fingerprint.Adafruit_Fingerprint(uart2)
 
 app = Flask(__name__)
 app.secret_key = "HUELLA"
@@ -105,6 +107,12 @@ def registrosingresos():
     if not 'login' in session:
         return redirect('/')
     return render_template('admin/registrosingresos.html')
+
+@app.route('/admin/salirsalon')
+def salirsalon():
+    if not 'login' in session:
+        return redirect('/')
+    return render_template('admin/salirsalon.html')
 
 
 @app.route('/admin/editar/<int:_id>')
@@ -574,14 +582,20 @@ UMBRAL_CONFIANZA_ALTO = 60    # Reducido de 80 a 60 para pruebas
 TAMANO_LOTE = 10              # Tamaño del lote para procesamiento
 
 # Función para cargar templates en el sensor
-def cargar_templates_en_sensor():
+def cargar_templates_en_sensor(sensor=None):
     """
     Carga los templates de la base de datos en la memoria del sensor.
     Retorna un diccionario que mapea los IDs del sensor a los IDs de la base de datos.
+    
+    Args:
+        sensor: Objeto del sensor a utilizar. Si es None, se usa el sensor principal (finger).
     """
+    if sensor is None:
+        sensor = finger
+        
     try:
         # Limpiar biblioteca del sensor
-        finger.empty_library()
+        sensor.empty_library()
         print("Biblioteca del sensor limpiada")
         
         # Obtener templates de la base de datos
@@ -607,11 +621,11 @@ def cargar_templates_en_sensor():
                 template_db = base64.b64decode(registro['template'])
                 
                 # Enviar al sensor (slot temporal)
-                finger.send_fpdata(list(template_db), "char", 1)
+                sensor.send_fpdata(list(template_db), "char", 1)
                 
                 # Guardar en la biblioteca del sensor con ID = i+1 (los IDs del sensor comienzan en 1)
                 sensor_id = i + 1
-                result = finger.store_model(sensor_id)
+                result = sensor.store_model(sensor_id)
                 
                 if result == adafruit_fingerprint.OK:
                     # Guardar mapeo de ID del sensor a ID de la base de datos
@@ -728,7 +742,7 @@ def api_resultado_identificacion():
                     # Registrar entrada si es necesario
                     if identificacion_activa:
                         cursor = mysql.connection.cursor()
-                        cursor.execute("INSERT INTO registro_ingresos (id_persona, fecha_hora) VALUES (%s, NOW())", 
+                        cursor.execute("INSERT INTO registro_ingresos (id_persona, fecha_hora_entrada) VALUES (%s, NOW())", 
                                      (persona['id'],))
                         mysql.connection.commit()
                         cursor.close()
@@ -971,10 +985,15 @@ def api_resultado_ingreso_salon():
                 cursor.close()
                 
                 if persona:
-                    # Registrar entrada
+                    # Registrar entrada con la hora local del backend
+                    ahora = datetime.now()
+                    fecha_hora_local = ahora.strftime('%Y-%m-%d %H:%M:%S')
                     cursor = mysql.connection.cursor()
-                    cursor.execute("INSERT INTO registro_ingresos (id_persona, fecha_hora) VALUES (%s, NOW())", 
-                                 (persona['id'],))
+                    cursor.execute("""
+                        INSERT INTO registro_ingresos 
+                        (id_persona, fecha_hora_entrada) 
+                        VALUES (%s, %s)
+                    """, (persona['id'], fecha_hora_local))
                     mysql.connection.commit()
                     cursor.close()
                     
@@ -990,6 +1009,7 @@ def api_resultado_ingreso_salon():
                         "encontrado": True,
                         "mensaje": f"Acceso concedido: {persona['nombres']}",
                         "persona": {
+                            "id": persona['id'],  # Añadir el ID para la sincronización
                             "nombres": persona['nombres'],
                             "cedula": persona['cedula'],
                             "telefono": persona.get('telefono', 'No disponible'),
@@ -1043,6 +1063,300 @@ def api_resultado_ingreso_salon():
         }
         return jsonify(resultado_ingreso)
 
+
+# ===============================================
+# API para salida del salón
+# ===============================================
+
+# Variables globales para salida del salón
+salida_activa = False
+resultado_salida = None
+esperando_nueva_verificacion_salida = True
+
+@app.route('/api/sincronizar_hora_ingreso', methods=['POST'])
+def api_sincronizar_hora_ingreso():
+    if not request.is_json:
+        return jsonify({"success": False, "message": "Se requiere JSON"}), 400
+    
+    data = request.get_json()
+    id_persona = data.get('id_persona')
+    hora_formateada = data.get('hora_formateada')
+    
+    if not id_persona or not hora_formateada:
+        return jsonify({"success": False, "message": "Faltan datos requeridos"}), 400
+    
+    try:
+        # Convertir la hora formateada a formato MySQL (YYYY-MM-DD HH:MM:SS)
+        # Asumiendo que hora_formateada está en formato DD/MM/YYYY, HH:MM:SS
+        partes = hora_formateada.replace(',', '').split()
+        fecha_partes = partes[0].split('/')
+        hora_partes = partes[1]
+        
+        # Reorganizar al formato MySQL
+        fecha_mysql = f"{fecha_partes[2]}-{fecha_partes[1]}-{fecha_partes[0]} {hora_partes}"
+        
+        # Buscar el último registro de ingreso para esta persona y actualizarlo
+        cursor = mysql.connection.cursor()
+        cursor.execute("""
+            UPDATE registro_ingresos 
+            SET fecha_hora_entrada = %s 
+            WHERE id_persona = %s 
+            ORDER BY id DESC 
+            LIMIT 1
+        """, (fecha_mysql, id_persona))
+        
+        mysql.connection.commit()
+        cursor.close()
+        
+        return jsonify({"success": True, "message": "Hora sincronizada correctamente"})
+    
+    except Exception as e:
+        print(f"Error al sincronizar hora: {str(e)}")
+        return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
+
+@app.route('/api/salir_salon', methods=['POST'])
+def api_salir_salon():
+    global salida_activa, resultado_salida, esperando_nueva_verificacion_salida
+    
+    # Reiniciar estado
+    salida_activa = True
+    resultado_salida = None
+    esperando_nueva_verificacion_salida = False
+    
+    # Mostrar mensaje en LCD
+    mostrar_en_lcd("Salida del salon", "Coloque su dedo")
+    
+    # Cargar templates en el segundo sensor
+    id_mapping = cargar_templates_en_sensor(finger2)
+    
+    # Guardar el mapeo en la sesión
+    session['id_mapping_salida'] = {str(k): v for k, v in id_mapping.items()}
+    
+    return jsonify({"success": True, "message": "Verificación de salida iniciada"})
+
+@app.route('/api/resultado_salida_salon', methods=['GET'])
+def api_resultado_salida_salon():
+    global salida_activa, resultado_salida, esperando_nueva_verificacion_salida
+    
+    if esperando_nueva_verificacion_salida:
+        if resultado_salida:
+            return jsonify(resultado_salida)
+        else:
+            return jsonify({
+                "encontrado": False, 
+                "mensaje": "Presione el botón 'Salir del Salón' para iniciar una nueva verificación",
+                "esperando_boton": True
+            })
+    
+    try:
+        # Capturar huella usando el segundo sensor (finger2)
+        i = finger2.get_image()
+        if i == adafruit_fingerprint.NOFINGER:
+            return jsonify({"encontrado": False, "mensaje": "Esperando dedo para salida...", "esperando_boton": False})
+        elif i != adafruit_fingerprint.OK:
+            mostrar_en_lcd("Error", "Intente de nuevo")
+            return jsonify({"encontrado": False, "mensaje": "Error al capturar huella para salida", "esperando_boton": False})
+
+        mostrar_en_lcd("Procesando", "huella salida...")
+        
+        # Convertir imagen a características usando el segundo sensor
+        i = finger2.image_2_tz(1)
+        if i != adafruit_fingerprint.OK:
+            mostrar_en_lcd("Error", "Intente de nuevo")
+            return jsonify({"encontrado": False, "mensaje": "Error al procesar la huella para salida", "esperando_boton": False})
+        
+        # Obtener el mapeo de IDs
+        id_mapping_str = session.get('id_mapping_salida', {})
+        
+        if not id_mapping_str:
+            esperando_nueva_verificacion_salida = True
+            mostrar_en_lcd("Error", "No hay registros")
+            resultado_salida = {
+                "encontrado": False,
+                "mensaje": "No hay templates cargados en el sensor para salida",
+                "esperando_boton": True
+            }
+            return jsonify(resultado_salida)
+        
+        # Buscar coincidencia en el segundo sensor
+        i = finger2.finger_search()
+        if i == adafruit_fingerprint.OK:
+            # Encontró coincidencia
+            finger_id = finger2.finger_id
+            confidence = finger2.confidence
+            
+            # Verificar si el ID del sensor está en nuestro mapeo
+            finger_id_str = str(finger_id)
+            
+            if finger_id_str in id_mapping_str:
+                # Obtener el ID de la base de datos
+                db_id = id_mapping_str[finger_id_str]
+                
+                # Obtener información de la persona
+                cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                cursor.execute("""
+                    SELECT id, nombres, cedula, telefono, cargo, 
+                           DATE_FORMAT(fecha_registro, '%%Y-%%m-%%d %%H:%%i:%%s') as fecha_registro 
+                    FROM registro_huellas WHERE id = %s
+                """, (db_id,))
+                persona = cursor.fetchone()
+                cursor.close()
+                
+                if persona:
+                    # Buscar la entrada más reciente sin salida registrada
+                    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                    cursor.execute("""
+                        SELECT id, fecha_hora_entrada 
+                        FROM registro_ingresos 
+                        WHERE id_persona = %s AND fecha_hora_salida IS NULL 
+                        ORDER BY fecha_hora_entrada DESC 
+                        LIMIT 1
+                    """, (persona['id'],))
+                    entrada = cursor.fetchone()
+                    
+                    if entrada:
+                        # Obtener la fecha y hora actual en formato local
+                        ahora = datetime.now()
+                        fecha_hora_local = ahora.strftime('%Y-%m-%d %H:%M:%S')
+                        
+                        # Actualizar el registro con la hora de salida local y calcular duración
+                        cursor.execute("""
+                            UPDATE registro_ingresos 
+                            SET fecha_hora_salida = %s, 
+                                duracion_minutos = TIMESTAMPDIFF(MINUTE, fecha_hora_entrada, %s) 
+                            WHERE id = %s
+                        """, (fecha_hora_local, fecha_hora_local, entrada['id']))
+                        mysql.connection.commit()
+                        
+                        # También registrar en la tabla de salidas con hora local
+                        cursor.execute("INSERT INTO registro_salidas (id_persona, fecha_hora) VALUES (%s, %s)", 
+                                     (persona['id'], fecha_hora_local))
+                        mysql.connection.commit()
+                        cursor.close()
+                        
+                        # Activar solenoid en un hilo separado
+                        threading.Thread(target=activar_solenoid, args=(3,)).start()
+                        
+                        # Mostrar mensaje de despedida en LCD
+                        nombre_corto = persona['nombres'].split()[0][:16]  # Primer nombre limitado a 16 caracteres
+                        mostrar_en_lcd(f"Hasta pronto", nombre_corto)
+                        
+                        esperando_nueva_verificacion_salida = True
+                        resultado_salida = {
+                            "encontrado": True,
+                            "mensaje": f"Salida autorizada: {persona['nombres']}",
+                            "persona": {
+                                "nombres": persona['nombres'],
+                                "cedula": persona['cedula'],
+                                "telefono": persona.get('telefono', 'No disponible'),
+                                "cargo": persona.get('cargo', 'No disponible'),
+                                "fecha_registro": persona.get('fecha_registro', 'No disponible'),
+                                "similitud": confidence
+                            },
+                            "esperando_boton": True
+                        }
+                        return jsonify(resultado_salida)
+                    else:
+                        # No hay entrada registrada para esta persona
+                        mostrar_en_lcd("Error", "Sin entrada previa")
+                        esperando_nueva_verificacion_salida = True
+                        resultado_salida = {
+                            "encontrado": False,
+                            "mensaje": f"No hay registro de entrada previo para {persona['nombres']}",
+                            "esperando_boton": True
+                        }
+                        return jsonify(resultado_salida)
+            
+            # Si llegamos aquí, no pudimos encontrar la persona en la base de datos
+            mostrar_en_lcd("Error", "Usuario no encontrado")
+            esperando_nueva_verificacion_salida = True
+            resultado_salida = {
+                "encontrado": False,
+                "mensaje": f"Error: Huella encontrada en el sensor (ID={finger_id}) pero no en el mapeo. Intente de nuevo.",
+                "esperando_boton": True
+            }
+            return jsonify(resultado_salida)
+        
+        elif i == adafruit_fingerprint.NOTFOUND:
+            # No encontró coincidencia
+            mostrar_en_lcd("Salida denegada", "No registrado")
+            esperando_nueva_verificacion_salida = True
+            resultado_salida = {
+                "encontrado": False,
+                "mensaje": "Salida denegada: No se encontró coincidencia en la base de datos",
+                "esperando_boton": True
+            }
+            return jsonify(resultado_salida)
+        else:
+            # Error en la búsqueda
+            mostrar_en_lcd("Error", "Intente de nuevo")
+            esperando_nueva_verificacion_salida = True
+            resultado_salida = {
+                "encontrado": False,
+                "mensaje": f"Error en la búsqueda de huella para salida: {i}",
+                "esperando_boton": True
+            }
+            return jsonify(resultado_salida)
+    
+    except Exception as e:
+        print(f"Error en identificación para salida: {str(e)}")
+        mostrar_en_lcd("Error", "Sistema")
+        esperando_nueva_verificacion_salida = True
+        resultado_salida = {
+            "encontrado": False,
+            "mensaje": f"Error en la identificación para salida: {str(e)}",
+            "esperando_boton": True
+        }
+        return jsonify(resultado_salida)
+
+# ... existing code ...
+
+
+
+
+#registro de ingresos 
+# Agregar esta ruta después de las demás rutas de API
+
+@app.route('/admin/registroingresos')
+def registroingresos():
+    if not 'login' in session:
+        return redirect('/')
+    return render_template('admin/registroingresos.html')
+
+@app.route('/api/obtener_registros_ingresos', methods=['GET'])
+def api_obtener_registros_ingresos():
+    if 'login' not in session:
+        return jsonify({"success": False, "mensaje": "No autorizado"})
+    
+    try:
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute("""
+            SELECT ri.id, rh.nombres, rh.cedula, rh.cargo, 
+                   DATE_FORMAT(ri.fecha_hora_entrada, '%Y-%m-%d %H:%i:%s') as fecha_hora_entrada,
+                   CASE WHEN ri.fecha_hora_salida IS NOT NULL 
+                        THEN DATE_FORMAT(ri.fecha_hora_salida, '%Y-%m-%d %H:%i:%s')
+                        ELSE NULL END as fecha_hora_salida,
+                   ri.duracion_minutos
+            FROM registro_ingresos ri
+            JOIN registro_huellas rh ON ri.id_persona = rh.id
+            ORDER BY ri.fecha_hora_entrada DESC
+        """)
+        registros = cursor.fetchall()
+        cursor.close()
+        
+        # Convertir a lista de diccionarios para serializar correctamente
+        registros_lista = []
+        for registro in registros:
+            registro_dict = dict(registro)
+            registros_lista.append(registro_dict)
+        
+        return jsonify({"success": True, "registros": registros_lista})
+    except Exception as e:
+        print(f"Error al obtener registros de ingresos: {str(e)}")
+        return jsonify({"success": False, "mensaje": f"Error: {str(e)}"})
+
+
+# ... existing code ...
 
 
 

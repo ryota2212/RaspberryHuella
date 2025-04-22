@@ -1,0 +1,151 @@
+{% include 'sitio/cabecera.html'%}
+
+<div class="container mt-5">
+    <h2>Verificación de Huella Digital</h2>
+    
+    <div class="card">
+        <div class="card-header">Identificación de Huella</div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col">
+                    <div id="mensajeIdentificacion" class="mb-3 alert alert-info">
+                        Haga clic en "Verificar Huella" para identificar a quién pertenece.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col">
+                    <button id="btnIdentificarHuella" class="btn btn-primary">Verificar Huella</button>
+                </div>
+            </div>
+            
+            <div id="resultadoIdentificacion" style="display: none;">
+                <div class="row">
+                    <div class="col">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">Persona Identificada</div>
+                            <div class="card-body">
+                                <h5 id="nombrePersona" class="card-title"></h5>
+                                <p class="card-text">
+                                    <strong>Cédula:</strong> <span id="cedulaPersona"></span><br>
+                                    <strong>Teléfono:</strong> <span id="telefonoPersona"></span><br>
+                                    <strong>Cargo:</strong> <span id="cargoPersona"></span><br>
+                                    <strong>Fecha de Registro:</strong> <span id="fechaRegistro"></span><br>
+                                    <strong>Similitud:</strong> <span id="similitudPersona"></span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const btnIdentificarHuella = document.getElementById('btnIdentificarHuella');
+        const mensajeIdentificacion = document.getElementById('mensajeIdentificacion');
+        const resultadoIdentificacion = document.getElementById('resultadoIdentificacion');
+        
+        let verificacionEnProceso = false;
+        let intervalId = null;
+        
+        btnIdentificarHuella.addEventListener('click', iniciarVerificacion);
+        
+        function iniciarVerificacion() {
+            if (verificacionEnProceso) return;
+            
+            verificacionEnProceso = true;
+            btnIdentificarHuella.disabled = true;
+            resultadoIdentificacion.style.display = 'none';
+            
+            mostrarMensaje('info', 'Coloque su dedo en el sensor...');
+            
+            // Iniciar el proceso de verificación
+            fetch('/api/identificar_huella', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Iniciar polling para verificar el resultado
+                    intervalId = setInterval(verificarResultado, 1000);
+                } else {
+                    mostrarError('Error al iniciar la verificación: ' + data.message);
+                    verificacionEnProceso = false;
+                    btnIdentificarHuella.disabled = false;
+                }
+            })
+            .catch(error => {
+                mostrarError('Error de conexión: ' + error);
+                verificacionEnProceso = false;
+                btnIdentificarHuella.disabled = false;
+            });
+        }
+        
+        function verificarResultado() {
+            fetch('/api/resultado_identificacion')
+            .then(response => response.json())
+            .then(data => {
+                // Mostrar mensaje de estado actual
+                mostrarMensaje(data.encontrado ? 'success' : (data.esperando_boton ? 'warning' : 'info'), data.mensaje);
+                
+                if (data.encontrado) {
+                    // Huella identificada exitosamente
+                    clearInterval(intervalId);
+                    mostrarResultado(data);
+                    verificacionEnProceso = false;
+                    btnIdentificarHuella.disabled = false;
+                } else if (data.esperando_boton) {
+                    // Proceso terminado sin coincidencia o con error
+                    clearInterval(intervalId);
+                    console.log("Resultado de verificación:", data);
+                    if (data.mensaje.includes("No se encontró coincidencia")) {
+                        // Mostrar información adicional sobre la mejor similitud
+                        mostrarMensaje('warning', data.mensaje);
+                    }
+                    verificacionEnProceso = false;
+                    btnIdentificarHuella.disabled = false;
+                } else if (data.mensaje === "Esperando dedo...") {
+                    // Continuar esperando, no hacer nada más
+                }
+            })
+            .catch(error => {
+                mostrarError('Error al verificar resultado: ' + error);
+                clearInterval(intervalId);
+                verificacionEnProceso = false;
+                btnIdentificarHuella.disabled = false;
+            });
+        }
+        
+        function mostrarResultado(data) {
+            if (!data.encontrado) {
+                mostrarMensaje('warning', data.mensaje || 'No se pudo identificar la huella');
+                return;
+            }
+            
+            document.getElementById('nombrePersona').textContent = data.persona.nombres;
+            document.getElementById('cedulaPersona').textContent = data.persona.cedula;
+            document.getElementById('telefonoPersona').textContent = data.persona.telefono || 'No disponible';
+            document.getElementById('cargoPersona').textContent = data.persona.cargo || 'No disponible';
+            document.getElementById('fechaRegistro').textContent = data.persona.fecha_registro || 'No disponible';
+            document.getElementById('similitudPersona').textContent = data.persona.similitud + '%';
+            
+            resultadoIdentificacion.style.display = 'block';
+            mostrarMensaje('success', '¡Huella identificada correctamente!');
+        }
+        
+        function mostrarMensaje(tipo, mensaje) {
+            mensajeIdentificacion.className = `mb-3 alert alert-${tipo}`;
+            mensajeIdentificacion.textContent = mensaje;
+        }
+        
+        function mostrarError(mensaje) {
+            mostrarMensaje('danger', mensaje);
+        }
+    });
+</script>
+
+{% include 'sitio/pie.html'%}
